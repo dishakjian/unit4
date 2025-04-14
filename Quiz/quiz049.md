@@ -1,7 +1,8 @@
 # Trace Table
 
-| Step           | D     | Z   | B      | (Z < L) | Action                                |
-| 1           | 46    | 1   | false  | true              | Initialize variables                   |
+| Step           | D     | Z   | B      | (Z < L) | Action (notes)|
+|----------------|-------|-----|--------|---------|-----------------------------|
+| 1              | 46    | 1   | false  | true    | Initialize variables|
 | 2 | 15    | 2   | true   | true              | D = 46 div 3, Z = 2, B = NOT false     |
 | 3 | 5     | 3   | false  | false             | D = 15 div 3, Z = 3, B = NOT true      |
 | 4     | 5     | 3   | false  | -                 | Exit loop (Z = 3 is not < L)           |
