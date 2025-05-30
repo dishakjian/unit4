@@ -9,11 +9,11 @@ Another issue is the return time on passes: students aren’t signed in automati
 While Outdoor Education and other school trips are common, staff can’t directly take students on passes. This causes friction, inconsistent tracking, and added admin and student burdens, which affect student safety and engagement.
 While Orah is the primary system, Ms R has also considered Komodo, a wellbeing-centered platform. Komodo allows for emotional check-ins and trends but lacks the logistical features needed for daily movement tracking.
 ## Proposed Solution
-To meet the school’s logistical and wellbeing needs while addressing the daily frustrations voiced by Ms R, I proposed building a web-based application. Unlike desktop apps, a web application is accessible from any device, making it ideal for an international school community where students, staff, and parents log in from various locations. Web apps offer centralized access, real-time updates, and cross-platform compatibility, which improves communication and usability across roles and time zones. 
-To address both the logistical and wellbeing gaps, I proposed to create an integrated system that combines the movement management features of Orah with the mental health and trends analysis capabilities inspired by Komodo. 
-I proposed using Python for development due to its readable syntax, rapid development capabilities, and strong support for scalability. Compared to Java or JavaScript, Python allows faster prototyping and easier maintenance, crucial in a high-demand school setting.
-For the backend, I proposed Flask, a lightweight Python framework. Flask is modular and flexible, allowing features to be built around the workflows of Ms R and her team. Unlike Django, which enforces a rigid structure and comes with prebuilt modules that may not align with the school’s needs, Flask offers full control over each feature’s design.
-I proposed using SQLite as the database as it requires no separate server and integrates seamlessly with Flask. This reduces setup time, allows faster testing, and enables real-world feedback from staff and students without unnecessary technical barriers unlike PostgreSQL or My SQL .
+To meet the school’s logistical and wellbeing needs while addressing the daily frustrations voiced by Ms R, I proposed building a web-based application. Unlike desktop apps, a web application is accessible from any device, making it ideal for an international school community where students, staff, and parents log in from various locations. Web apps offer centralized access, real-time updates, and cross-platform compatibility, which improves communication and usability across roles and time zones [1].
+To address both the logistical and wellbeing gaps, I proposed to create an integrated system that combines the movement management features of Orah with the mental health and trends analysis capabilities inspired by Komodo [2][3].
+I proposed using Python for development due to its readable syntax, rapid development capabilities, and strong support for scalability [4]. Compared to Java or JavaScript, Python allows faster prototyping and easier maintenance, crucial in a high-demand school setting [5].
+For the backend, I proposed Flask, a lightweight Python framework. Flask is modular and flexible, allowing features to be built around the workflows of Ms R and her team. Unlike Django, which enforces a rigid structure and comes with prebuilt modules that may not align with the school’s needs, Flask offers full control over each feature’s design [6].
+I proposed using SQLite as the database as it requires no separate server and integrates seamlessly with Flask. This reduces setup time, allows faster testing, and enables real-world feedback from staff and students without unnecessary technical barriers unlike PostgreSQL or MySQL [7].
 
 ## Success Criteria 
 (See evidence of Approval in the Appendix)
@@ -92,6 +92,16 @@ Parents can select their preferred language to receive notifications, leave requ
 **Issues Tackled:**  
 > “Parents also struggle with the system’s unintuitiveness and language, making communication harder.”
 
+## References for Criterion A
+References
+1. Mozilla. (n.d.). Web applications. MDN Web Docs. Retrieved from: https://developer.mozilla.org/en-US/docs/Learn/Server-side/First_steps/Web_application_overview
+2. Orah. (n.d.). Orah – Student life and boarding management platform. Retrieved from: https://www.orah.com
+3. Komodo. (n.d.). Komodo Wellbeing – Data-driven mental health platform for schools. Retrieved from: https://www.komodowellbeing.com
+4. Python Software Foundation. (n.d.). About Python. Retrieved from: https://www.python.org/about
+5. GeeksforGeeks. (2023). Python vs Java. Retrieved from: https://www.geeksforgeeks.org/python-vs-java/
+6. Palani, A. (2021). Flask vs Django: Choosing the right web framework. Towards Data Science. Retrieved from: https://towardsdatascience.com/flask-vs-django-choose-the-right-web-framework-2021-9d63717f3d50
+7. SQLite. (n.d.). Appropriate uses for SQLite. Retrieved from: https://www.sqlite.org/whentouse.html
+
 # Criterion B: Design
 ## System Diagram
 ![image](https://github.com/user-attachments/assets/ff07c674-b870-41c1-b0ae-34c50778fe11)
@@ -159,9 +169,9 @@ Fig 5. Shows how different passes require different approval.
 | 31       | **Testing: Fix rejected pass editing**                            | Enabled students to edit rejected requests without resubmitting from scratch                                           | 2 hr          | 22 May                  | D         |
 
 
-# Criteria C: Development
+# Criterion C: Development
 List of Techniques
-- Flask Routes – Used to define different URLs for user navigation and logic handling (e.g., /login, /dashboard).
+- Flask Routes – to define different URLs for user navigation and logic handling (e.g., /login, /dashboard).
 - Parameterized SQL Queries – Prevent SQL injection by safely inserting user input into SQL statements.
 - Session Management – Store user-specific data (like login state) on the server between requests using session.
 - Hashing Passwords – Securely store user passwords using werkzeug.security.generate_password_hash().
@@ -442,10 +452,25 @@ def bulk_approve():
 Justification: This minimizes the number of DB transactions, improves scalability, and prevents partial updates. The use of REST principles also improves frontend-backend separation.
 
 
+## References for Criterion C
+
+1. “Flask User Authentication - Learn Flask with Login & Register.” *Pretty Printed*, YouTube, 15 Dec. 2017, www.youtube.com/watch?v=71wSzpLyW9k.
+2. “Flask Tutorial: Sessions.” *Corey Schafer*, YouTube, 5 Dec. 2017, www.youtube.com/watch?v=QI6x0NBm4jM.
+3. “SQLAlchemy Crash Course.” *Tech With Tim*, YouTube, 28 Jan. 2021, www.youtube.com/watch?v=woKYyhLCcnU.
+4. “Python Flask Crash Course.” *Traversy Media*, YouTube, 12 Mar. 2020, www.youtube.com/watch?v=Z1RJmh_OqeA.
+5. “Sending Emails with Flask-Mail.” *Python Engineer*, YouTube, 28 Oct. 2020, www.youtube.com/watch?v=K3JGxj2rvAs.
+6. “SQL Transactions Tutorial.” *Programming with Mosh*, YouTube, 18 Apr. 2020, www.youtube.com/watch?v=hvF4A5c3ecI.
+7. “Pandas Data Analysis Basics.” *Data Science Tutorials*, YouTube, 22 Feb. 2021, www.youtube.com/watch?v=vmEHCJofslg.
+8. “Flask Caching with Flask-Caching.” *Pretty Printed*, YouTube, 30 Apr. 2020, www.youtube.com/watch?v=4jvG9uf7m5Q.
+9. “Python DateTime Module Tutorial.” *Tech With Tim*, YouTube, 23 May 2019, www.youtube.com/watch?v=eirjjyP2qcQ.
+10. “SQLAlchemy Inheritance Tutorial.” *Python Simplified*, YouTube, 10 May 2021, www.youtube.com/watch?v=pEfrsoBLccs.
+11. “REST API with Flask and Python.” *Traversy Media*, YouTube, 9 Apr. 2019, www.youtube.com/watch?v=GMppyAPbLYk.
+
 
 # Appendix
 ![Screenshot 2025-05-29 224607](https://github.com/user-attachments/assets/0beef8ca-d99b-48a9-9c7c-734b076457e6)
 ![Screenshot 2025-05-29 224330](https://github.com/user-attachments/assets/d94ad51e-2873-40bd-a669-629ff06925d6)
 
 [IA SUCCESS CRITERIA.pdf](https://github.com/user-attachments/files/20513654/IA.SUCCESS.CRITERIA.pdf)
+
 [Notes from consultation with client.pdf](https://github.com/user-attachments/files/20513653/Notes.from.consultation.with.client.pdf)
