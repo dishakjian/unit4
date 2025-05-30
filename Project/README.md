@@ -1,3 +1,4 @@
+![](https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExejhiOTYzM3UxNWF4a2VoaWVpeGs4MnZvaWlmMHJsZjR1d2s1NW15NyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/SPoBTQqjn21XO/giphy.gif)
 # KOMORAH
 # Criterion A: Planning
 ## Problem Definition
