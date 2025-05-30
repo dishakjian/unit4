@@ -93,7 +93,6 @@ Parents can select their preferred language to receive notifications, leave requ
 > “Parents also struggle with the system’s unintuitiveness and language, making communication harder.”
 
 ## References for Criterion A
-References
 1. Mozilla. (n.d.). Web applications. MDN Web Docs. Retrieved from: https://developer.mozilla.org/en-US/docs/Learn/Server-side/First_steps/Web_application_overview
 2. Orah. (n.d.). Orah – Student life and boarding management platform. Retrieved from: https://www.orah.com
 3. Komodo. (n.d.). Komodo Wellbeing – Data-driven mental health platform for schools. Retrieved from: https://www.komodowellbeing.com
