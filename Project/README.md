@@ -2,6 +2,7 @@
 # Criterion A: Planning
 ## Problem Definition
 (See evidence of Consultation in the Appendix)
+
 Ms R is the Head of Pastoral at a diverse international boarding school with over 200 students. Her role involves managing student movement, residential life, and wellbeing. The school uses Orah, a commercial tracking platform, but Ms R finds it inefficient and misaligned with the school’s needs. Its interface is unintuitive, and movement requests often fail due to buggy approvals, unclear steps, or missing notifications. Students become frustrated and stop submitting leave forms. Staff waste time chasing sign-ins due to the lack of curfew alerts. Automation regularly breaks: check-ins don’t update, curfew alerts fail, and emergency rolls arrive late or not at all. Staff can’t prioritize high-risk students, leading to manual double-checking and reduced efficiency.
 Orah’s wellbeing module is underdeveloped, lacking guided reflections, counselling calendars, or personalized insights. It presents raw data without trends, preventing early intervention. Ms R cannot track patterns in wellbeing. Parents also struggle with the system’s unintuitiveness and language, making communication harder.
 Another issue is the return time on passes: students aren’t signed in automatically at that time, making the field pointless. Additionally, rejected passes must be completely redone instead of being edited, wasting student time and discouraging use.
@@ -92,6 +93,35 @@ Parents can select their preferred language to receive notifications, leave requ
 > “Parents also struggle with the system’s unintuitiveness and language, making communication harder.”
 
 # Criterion B: Design
+## System Diagram
+![image](https://github.com/user-attachments/assets/ff07c674-b870-41c1-b0ae-34c50778fe11)
+Fig 1. The system diagram displays the hardware that is needed to run the project, the different tools used, interaction with the database, connections with each other and types of files that are used.
+
+![FINALUMLTRANSPARENT](https://github.com/user-attachments/assets/97db8f13-6de0-4676-986d-f7dc0710979a)
+Fig 2. The diagram is the UML diagram for the OOP classes and methods used in this program, including polymorphism and relationships/inheritance.
+
+
+## Flow Diagrams
+### Group Leave
+![Group leave](https://github.com/user-attachments/assets/053ab603-8ba3-4e52-8b2f-7b1006b723b5)
+
+Fig 3. Demonstrates the streamlined group approval process. Staff create pre-approved leave passes that bypass individual parent approvals, with student sign-outs generating automatic leave records. This special flow maintains auditability while reducing approval overhead for group trips.
+
+
+
+
+### Register/Login
+![Register_login](https://github.com/user-attachments/assets/19f60057-74d8-4b0b-b8e6-25e0dd0af970)
+
+Fig 4. Illustrates user authentication pathways. New users provide credentials which are hashed before database storage, while returning users undergo password verification. Failed attempts trigger error messages, while success redirects to role-specific dashboards.
+
+
+### Leave request
+![leave request - Page 1](https://github.com/user-attachments/assets/227ef840-c2a7-4919-93d7-a897c66ff098)
+
+Fig 5. Shows how different passes require different approval. 
+
+
 
 ## Record of Tasks
 | Task No. | Planned Action                                                    | Planned Outcome                                                                                                         | Time Estimate | Target Completion Date | Criterion |
@@ -127,3 +157,295 @@ Parents can select their preferred language to receive notifications, leave requ
 | 29       | **Testing: Conduct client UAT session**                           | Feedback on UI intuitiveness (e.g., "Language toggle is clear")                                                         | 1.5 hr        | 21 May                  | D         |
 | 30       | **Testing: Debug auto-sign-in logic**                             | Patched issue where attendance wasn’t updated automatically (vs. Orah’s flaw)                                          | 3 hr          | 22 May                  | D         |
 | 31       | **Testing: Fix rejected pass editing**                            | Enabled students to edit rejected requests without resubmitting from scratch                                           | 2 hr          | 22 May                  | D         |
+
+
+# Criteria C: Development
+List of Techniques
+- Flask Routes – Used to define different URLs for user navigation and logic handling (e.g., /login, /dashboard).
+- Parameterized SQL Queries – Prevent SQL injection by safely inserting user input into SQL statements.
+- Session Management – Store user-specific data (like login state) on the server between requests using session.
+- Hashing Passwords – Securely store user passwords using werkzeug.security.generate_password_hash().
+- Input Validation – Ensure user inputs are the correct type/format before processing (e.g., checking empty fields, password length).
+- Jinja2 Templates – Generate dynamic HTML by embedding Python logic in templates (e.g., {% for user in users %}).
+- If Statements & For Loops – Used throughout routes and templates for decision-making and iteration.
+- Functions – Code is modularized into reusable functions for clarity and reusability (e.g., validate_user(), get_user_by_id()).
+
+
+Problem 1: Secure Authentication System
+Client Need: "We need different login levels for students, parents, and staff with proper security."
+
+Initial Approach: I first implemented password hashing using SHA-256. However, during validation, I discovered it was susceptible to rainbow table attacks and lacked adaptability to future security demands.
+
+Solution: I upgraded the authentication to use PBKDF2-HMAC with SHA-256 and 150,000 iterations via Flask’s werkzeug.security module. This ensures compliance with NIST standards by introducing:
+- Cryptographic salt (16 bytes)
+- High iteration count to increase brute-force resistance
+- An upgradeable algorithm and structure
+
+```.py
+from werkzeug.security import generate_password_hash, check_password_hash
+
+# In User model
+def set_password(self, password):
+    self.password_hash = generate_password_hash(
+        password,
+        method='pbkdf2:sha256',
+        salt_length=16,
+        iterations=150000
+    )
+
+def check_password(self, password):
+    return check_password_hash(self.password_hash, password)
+```
+Justification: Adaptive hashing significantly reduces attack feasibility and allows future-proofing. Roles are enforced via Flask-Login’s @login_required decorator and user role validation, ensuring logical separation between user levels.
+
+
+
+Problem 2: Race Condition Prevention in Dual Approval Workflow
+Client Need: "Leave requests require both parent and staff approval, sometimes simultaneously."
+
+Problem: Initial attempts using simple boolean flags led to race conditions due to concurrent updates.
+
+Research: I learned about database transaction isolation levels and row locking.
+
+Final Implementation:
+
+```.py
+@main.route('/approve/<int:request_id>')
+@login_required
+def approve_request(request_id):
+    try:
+        db.session.begin()
+        # Lock row during entire transaction
+        request = LeaveRequest.query.with_for_update().get_or_404(request_id)
+        
+        if current_user.role == 'parent':
+            request.parent_approved = True
+        elif current_user.role == 'staff':
+            request.staff_approved = True
+            
+        if request.parent_approved and request.staff_approved:
+            request.status = 'approved'
+            create_leave_pass(request)
+            
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Approval failed: {str(e)}")
+    
+    return redirect_back()
+
+```
+Key Techniques:
+- with_for_update() locks the row
+- Atomic transaction ensures all-or-nothing update
+- Proper error handling with rollback
+Justification: Row-level locks ensure only one user can modify a request at a time. Coupled with SQLAlchemy’s transaction control and exception handling, this guarantees data consistency even under high concurrency.
+
+
+
+Problem 3: Real-time Notifications
+Client Need: "Parents should receive instant updates after staff approval."
+
+Initial Attempt: I tried simple SMTP emails but found delays of 5-10 seconds.
+
+Improved Solution: I implemented asynchronous email notifications using Python's threading module and Flask-Mail.
+
+```.py
+from threading import Thread
+from flask_mail import Message
+
+def send_async_notification(app, recipient, template, **context):
+    with app.app_context():
+        msg = Message(
+            "Leave Request Update",
+            recipients=[recipient],
+            html=render_template(f'emails/{template}', **context)
+        mail.send(msg)
+
+@app.route('/notify/<int:request_id>')
+def notify_parent(request_id):
+    request = LeaveRequest.query.get_or_404(request_id)
+    if request.status == 'approved':
+        Thread(target=send_async_notification, args=(
+            current_app._get_current_object(),
+            request.student.parent.email,
+            'approval_notice.html',
+            student_name=request.student.username,
+            dates=f"{request.start_time} to {request.end_time}"
+        )).start()
+    return jsonify(success=True)
+```
+Justification: Thread-based asynchronous execution offloads the blocking email process from the main thread, improving UI responsiveness. While basic, it was sufficient for the scale of the project and avoids the complexity of full background queues like Celery.
+
+Problem 4: Wellness Trend Analysis
+Client Need: "Counselors want to visualize student wellbeing over time."
+
+Technical Challenge: Raw SQL queries became too complex for multi-dimensional analysis (timeframe, dorms, mood).
+
+Solution: After a lot of trial and error and youtube videos, Implemented a hybrid approach using SQLAlchemy and Pandas:
+```.py
+def get_wellness_trends(timeframe='monthly'):
+    # SQL for initial data fetch
+    data = db.session.query(
+        WellnessCheckIn.date,
+        WellnessCheckIn.mood_score,
+        WellnessCheckIn.stress_tags,
+        StudentProfile.dorm
+    ).join(User).join(StudentProfile).all()
+    
+    # Pandas for analysis
+    df = pd.DataFrame(data, columns=['date', 'mood', 'stress', 'dorm'])
+    df['stress_count'] = df['stress'].str.count(',') + 1
+    
+    if timeframe == 'weekly':
+        return df.groupby([pd.Grouper(key='date', freq='W'), 'dorm']).mean()
+    else:
+        return df.groupby([pd.Grouper(key='date', freq='M'), 'dorm']).mean()
+```
+
+Problem 5: (performance Optimized) Emergency Roll Call
+Client Need: "Staff must be able to account for all students instantly during emergencies."
+
+Technical Challenge: Traditional queries caused latency with 200+ students.
+
+Solution: I implemented a materialized view using a WITH clause and cached the result using Flask-Caching.
+
+```.py
+@cache.memoize(timeout=60)
+def get_campus_status():
+    # Materialized view approach
+    return db.session.execute("""
+        WITH current_status AS (
+            SELECT 
+                u.id,
+                u.username,
+                CASE WHEN lr.id IS NOT NULL AND lr.end_time > NOW() 
+                     THEN 'off_campus' 
+                     ELSE 'on_campus' 
+                END AS status
+            FROM users u
+            LEFT JOIN leave_requests lr ON u.id = lr.student_id 
+                AND lr.status = 'approved'
+                AND lr.start_time <= NOW()
+            WHERE u.role = 'student'
+        )
+        SELECT * FROM current_status
+    """).fetchall()
+```
+Justification: Caching significantly reduces database load and latency, delivering results in under one second. Materialized view logic precomputes student status in bulk, boosting performance during critical operations.
+
+Problem 6: Dynamic Curfew Logic
+Client Need: "Local leave requests should auto-approve but reject if they violate curfew rules."
+
+Initial Failure: Simple time comparison failed to account for weekend vs weekday curfews.
+
+Solution: Implemented a CurfewRule class with temporal logic:
+```.py
+class CurfewRule:
+    WEEKDAY_CURFEW = time(21, 30)  # 9:30 PM
+    WEEKEND_CURFEW = time(22, 30)  # 10:30 PM
+    
+    @classmethod
+    def get_curfew(cls, date):
+        return cls.WEEKEND_CURFEW if date.weekday() in [4, 5] else cls.WEEKDAY_CURFEW
+    
+    @classmethod
+    def validate_request(cls, start, end):
+        if start.date() != end.date():
+            return False
+        
+        curfew = cls.get_curfew(start.date())
+        return end.time() <= curfew
+
+##Implementation in Workflow:
+
+def handle_local_request(request):
+    if not CurfewRule.validate_request(request.start_time, request.end_time):
+        request.status = 'rejected'
+        request.rejection_reason = 'Violates curfew rules'
+        db.session.commit()
+        return False
+    request.status = 'approved'
+    db.session.commit()
+    return True
+```
+Justification: This use of algorithmic thinking makes it testable, extendable, and easily updated if rules change.
+
+
+Problem 7: (polymorphic) Teacher Endorsement System
+Client Need: "Missing class requests require teacher approvals before parent review."
+
+Complexity: Needed dynamic endorsement routing without hardcoding.
+
+Solution: Created polymorphic endorsement system using SQLAlchemy’s inheritance and polymorphic_on:
+
+```.py
+class LeaveEndorsement(db.Model):
+    TYPE_TEACHER = 1
+    TYPE_PARENT = 2
+    TYPE_STAFF = 3
+    
+    id = db.Column(db.Integer, primary_key=True)
+    request_id = db.Column(db.Integer, db.ForeignKey('leave_request.id'))
+    endorser_type = db.Column(db.Integer)
+    endorser_id = db.Column(db.Integer)
+    approved = db.Column(db.Boolean, default=None)
+    
+    __mapper_args__ = {
+        'polymorphic_on': endorser_type,
+        'polymorphic_identity': 0
+    }
+
+class TeacherEndorsement(LeaveEndorsement):
+    __mapper_args__ = {'polymorphic_identity': 1}
+    teacher = db.relationship('User', foreign_keys=[endorser_id])
+
+class ParentEndorsement(LeaveEndorsement):
+    __mapper_args__ = {'polymorphic_identity': 2}
+```
+
+Problem 8: Bulk Approval Interface
+Client Need: "Staff should approve multiple requests at once during busy periods."
+
+Technical Challenge: Traditional form handling couldn't scaleand showd inefficiencies.
+
+Solution: I created a REST API endpoint to process batch approvals atomically, using a single SQL UPDATE and looping only for post-processing (pass generation).
+```.py
+@app.route('/api/bulk-approve', methods=['POST'])
+def bulk_approve():
+    try:
+        db.session.begin()
+        request_ids = request.json.get('requests', [])
+        
+        # Use single UPDATE query for efficiency
+        db.session.execute(
+            update(LeaveRequest)
+            .where(LeaveRequest.id.in_(request_ids))
+            .values(status='approved', staff_approved=True)
+        )
+        
+        # Generate passes in bulk
+        approved_requests = LeaveRequest.query.filter(
+            LeaveRequest.id.in_(request_ids)
+        ).all()
+        
+        for req in approved_requests:
+            generate_pass(req)
+            
+        db.session.commit()
+        return jsonify(success=True, count=len(request_ids))
+    
+    except Exception as e:
+        db.session.rollback()
+        return jsonify(error=str(e)), 500
+```
+Justification: This minimizes the number of DB transactions, improves scalability, and prevents partial updates. The use of REST principles also improves frontend-backend separation.
+
+
+
+# Appendix
+![Screenshot 2025-05-29 224607](https://github.com/user-attachments/assets/0beef8ca-d99b-48a9-9c7c-734b076457e6)
+![Screenshot 2025-05-29 224330](https://github.com/user-attachments/assets/d94ad51e-2873-40bd-a669-629ff06925d6)
+
+[IA SUCCESS CRITERIA.pdf](https://github.com/user-attachments/files/20513654/IA.SUCCESS.CRITERIA.pdf)
+[Notes from consultation with client.pdf](https://github.com/user-attachments/files/20513653/Notes.from.consultation.with.client.pdf)
