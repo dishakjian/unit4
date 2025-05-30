@@ -180,7 +180,8 @@ List of Techniques
 - Functions – Code is modularized into reusable functions for clarity and reusability (e.g., validate_user(), get_user_by_id()).
 
 
-Problem 1: Secure Authentication System
+### Problem 1: Secure Authentication System
+
 Client Need: "We need different login levels for students, parents, and staff with proper security."
 
 Initial Approach: I first implemented password hashing using SHA-256. However, during validation, I discovered it was susceptible to rainbow table attacks and lacked adaptability to future security demands.
@@ -209,7 +210,8 @@ Justification: Adaptive hashing significantly reduces attack feasibility and all
 
 
 
-Problem 2: Race Condition Prevention in Dual Approval Workflow
+### Problem 2: Race Condition Prevention in Dual Approval Workflow
+
 Client Need: "Leave requests require both parent and staff approval, sometimes simultaneously."
 
 Problem: Initial attempts using simple boolean flags led to race conditions due to concurrent updates.
@@ -251,8 +253,8 @@ Key Techniques:
 Justification: Row-level locks ensure only one user can modify a request at a time. Coupled with SQLAlchemy’s transaction control and exception handling, this guarantees data consistency even under high concurrency.
 
 
+### Problem 3: Real-time Notifications
 
-Problem 3: Real-time Notifications
 Client Need: "Parents should receive instant updates after staff approval."
 
 Initial Attempt: I tried simple SMTP emails but found delays of 5-10 seconds.
@@ -286,7 +288,8 @@ def notify_parent(request_id):
 ```
 Justification: Thread-based asynchronous execution offloads the blocking email process from the main thread, improving UI responsiveness. While basic, it was sufficient for the scale of the project and avoids the complexity of full background queues like Celery.
 
-Problem 4: Wellness Trend Analysis
+### Problem 4: Wellness Trend Analysis
+
 Client Need: "Counselors want to visualize student wellbeing over time."
 
 Technical Challenge: Raw SQL queries became too complex for multi-dimensional analysis (timeframe, dorms, mood).
@@ -312,7 +315,8 @@ def get_wellness_trends(timeframe='monthly'):
         return df.groupby([pd.Grouper(key='date', freq='M'), 'dorm']).mean()
 ```
 
-Problem 5: (performance Optimized) Emergency Roll Call
+### Problem 5: (performance Optimized) Emergency Roll Call
+
 Client Need: "Staff must be able to account for all students instantly during emergencies."
 
 Technical Challenge: Traditional queries caused latency with 200+ students.
@@ -343,7 +347,8 @@ def get_campus_status():
 ```
 Justification: Caching significantly reduces database load and latency, delivering results in under one second. Materialized view logic precomputes student status in bulk, boosting performance during critical operations.
 
-Problem 6: Dynamic Curfew Logic
+### Problem 6: Dynamic Curfew Logic
+
 Client Need: "Local leave requests should auto-approve but reject if they violate curfew rules."
 
 Initial Failure: Simple time comparison failed to account for weekend vs weekday curfews.
@@ -381,7 +386,8 @@ def handle_local_request(request):
 Justification: This use of algorithmic thinking makes it testable, extendable, and easily updated if rules change.
 
 
-Problem 7: (polymorphic) Teacher Endorsement System
+### Problem 7: (polymorphic) Teacher Endorsement System
+
 Client Need: "Missing class requests require teacher approvals before parent review."
 
 Complexity: Needed dynamic endorsement routing without hardcoding.
@@ -413,7 +419,8 @@ class ParentEndorsement(LeaveEndorsement):
     __mapper_args__ = {'polymorphic_identity': 2}
 ```
 
-Problem 8: Bulk Approval Interface
+### Problem 8: Bulk Approval Interface
+
 Client Need: "Staff should approve multiple requests at once during busy periods."
 
 Technical Challenge: Traditional form handling couldn't scaleand showd inefficiencies.
