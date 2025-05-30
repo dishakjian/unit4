@@ -192,19 +192,17 @@ Solution: I upgraded the authentication to use PBKDF2-HMAC with SHA-256 and 150,
 - An upgradeable algorithm and structure
 
 ```.py
-from werkzeug.security import generate_password_hash, check_password_hash
-
-# In User model
 def set_password(self, password):
     self.password_hash = generate_password_hash(
-        password,
-        method='pbkdf2:sha256',
-        salt_length=16,
-        iterations=150000
+        password,                     # The plaintext password
+        method='pbkdf2:sha256',       # Adaptive hashing algorithm
+        salt_length=16,               # 16 bytes of salt for added randomness
+        iterations=150000             # 150,000 iterations to resist brute-force attacks
     )
 
+# Check if a given password matches the stored hashed password
 def check_password(self, password):
-    return check_password_hash(self.password_hash, password)
+    return check_password_hash(self.password_hash, password)  # Verifies using stored hash
 ```
 Justification: Adaptive hashing significantly reduces attack feasibility and allows future-proofing. Roles are enforced via Flask-Login’s @login_required decorator and user role validation, ensuring logical separation between user levels.
 
@@ -225,32 +223,68 @@ Final Implementation:
 @login_required
 def approve_request(request_id):
     try:
-        db.session.begin()
-        # Lock row during entire transaction
+        db.session.begin()  # Start transaction manually
+        # Lock the leave request row until the transaction ends
         request = LeaveRequest.query.with_for_update().get_or_404(request_id)
-        
+
+        # Conditionally mark approval based on user role
         if current_user.role == 'parent':
             request.parent_approved = True
         elif current_user.role == 'staff':
             request.staff_approved = True
-            
+
+        # If both roles approved, mark the request as fully approved
         if request.parent_approved and request.staff_approved:
             request.status = 'approved'
-            create_leave_pass(request)
-            
-        db.session.commit()
-    except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Approval failed: {str(e)}")
-    
-    return redirect_back()
+            create_leave_pass(request)  # Generate leave pass
 
+        db.session.commit()  # Commit all changes atomically
+    except Exception as e:
+        db.session.rollback()  # Rollback on any error to maintain consistency
+        current_app.logger.error(f"Approval failed: {str(e)}")  # Log the error
+
+    return redirect_back()  # Return to previous page
 ```
-Key Techniques:
-- with_for_update() locks the row
-- Atomic transaction ensures all-or-nothing update
-- Proper error handling with rollback
-Justification: Row-level locks ensure only one user can modify a request at a time. Coupled with SQLAlchemy’s transaction control and exception handling, this guarantees data consistency even under high concurrency.
+This is a common technique for ensuring data consistency in concurrent operations, and works well on most production-grade databases like PostgreSQL or MySQL, which support row-level locking.
+
+However, when I tested this with SQLite I discovered a crucial limitation: SQLite does not support row-level locking with SELECT ... FOR UPDATE. Instead, it locks the entire database or table at the transaction level. This means that the .with_for_update() call silently fails to lock the row as expected, allowing race conditions to still occur.
+
+This behavior was tricky because no explicit error was thrown; the code seemed to run fine but under concurrent requests, data inconsistencies could happen. Realizing this, I researched SQLite’s locking mechanism and found that it uses database-level locks during write transactions, meaning the simplest way to prevent race conditions is to manage transactions more carefully.
+I modified the logic to:
+1. Start a transaction explicitly using db.session.begin().
+2. Perform a full update or re-check within this transaction to ensure consistency.
+3. Serialize access by limiting concurrency on the application level (e.g., using locks or queues if necessary).
+```.py
+from flask import abort
+from sqlalchemy.exc import IntegrityError
+
+def approve_leave_request(leave_request_id):
+    try:
+        # Start a transaction explicitly
+        with db.session.begin():
+            # Fetch the leave request normally (without with_for_update)
+            leave_request = LeaveRequest.query.get(leave_request_id)
+            if leave_request is None:
+                abort(404, "Leave request not found")
+            
+            # Check if already approved or rejected to prevent duplicate updates
+            if leave_request.status != 'pending':
+                abort(400, "Leave request already processed")
+            
+            # Update the status safely inside the transaction
+            leave_request.status = 'approved'
+            db.session.add(leave_request)
+
+        # Commit happens automatically here
+        return {"message": "Leave request approved successfully"}, 200
+
+    except IntegrityError:
+        db.session.rollback()
+        abort(500, "Database integrity error occurred")
+```
+This approach works because the transaction ensures that the entire set of operations completes atomically. SQLite locks the database for writes during this period, which effectively prevents concurrent writes from corrupting data.
+
+While this is not as granular or performant as row-level locking, it satisfies the immediate requirement to prevent race conditions in a development environment.
 
 
 ### Problem 3: Real-time Notifications
@@ -262,26 +296,25 @@ Initial Attempt: I tried simple SMTP emails but found delays of 5-10 seconds.
 Improved Solution: I implemented asynchronous email notifications using Python's threading module and Flask-Mail.
 
 ```.py
-from threading import Thread
-from flask_mail import Message
-
 def send_async_notification(app, recipient, template, **context):
-    with app.app_context():
+    with app.app_context():  # Use app context since we're in a new thread
         msg = Message(
-            "Leave Request Update",
-            recipients=[recipient],
-            html=render_template(f'emails/{template}', **context)
-        mail.send(msg)
+            "Leave Request Update",        # Subject line
+            recipients=[recipient],        # Email recipient
+            html=render_template(f'emails/{template}', **context)  # Rendered HTML content
+        )
+        mail.send(msg)  # Send email
 
 @app.route('/notify/<int:request_id>')
 def notify_parent(request_id):
-    request = LeaveRequest.query.get_or_404(request_id)
-    if request.status == 'approved':
+    request = LeaveRequest.query.get_or_404(request_id)  # Fetch request
+    if request.status == 'approved':  # Only notify if approved
+        # Run notification in background thread
         Thread(target=send_async_notification, args=(
-            current_app._get_current_object(),
-            request.student.parent.email,
-            'approval_notice.html',
-            student_name=request.student.username,
+            current_app._get_current_object(),        # Pass actual app object
+            request.student.parent.email,             # Email to parent
+            'approval_notice.html',                   # Email template
+            student_name=request.student.username,    # Template context
             dates=f"{request.start_time} to {request.end_time}"
         )).start()
     return jsonify(success=True)
@@ -297,22 +330,26 @@ Technical Challenge: Raw SQL queries became too complex for multi-dimensional an
 Solution: After a lot of trial and error and youtube videos, Implemented a hybrid approach using SQLAlchemy and Pandas:
 ```.py
 def get_wellness_trends(timeframe='monthly'):
-    # SQL for initial data fetch
+    # Fetch required data from DB: mood score, stress tags, dorms
     data = db.session.query(
         WellnessCheckIn.date,
         WellnessCheckIn.mood_score,
         WellnessCheckIn.stress_tags,
         StudentProfile.dorm
     ).join(User).join(StudentProfile).all()
-    
-    # Pandas for analysis
+
+    # Create DataFrame for analysis
     df = pd.DataFrame(data, columns=['date', 'mood', 'stress', 'dorm'])
+
+    # Count number of stress tags per entry (comma-separated tags)
     df['stress_count'] = df['stress'].str.count(',') + 1
-    
+
+    # Group by timeframe and dorm, then compute averages
     if timeframe == 'weekly':
         return df.groupby([pd.Grouper(key='date', freq='W'), 'dorm']).mean()
     else:
         return df.groupby([pd.Grouper(key='date', freq='M'), 'dorm']).mean()
+
 ```
 
 ### Problem 5: (performance Optimized) Emergency Roll Call
@@ -324,9 +361,9 @@ Technical Challenge: Traditional queries caused latency with 200+ students.
 Solution: I implemented a materialized view using a WITH clause and cached the result using Flask-Caching.
 
 ```.py
-@cache.memoize(timeout=60)
+@cache.memoize(timeout=60)  # Cache result for 60 seconds
 def get_campus_status():
-    # Materialized view approach
+    # Use WITH clause to precompute student presence efficiently
     return db.session.execute("""
         WITH current_status AS (
             SELECT 
@@ -356,22 +393,22 @@ Initial Failure: Simple time comparison failed to account for weekend vs weekday
 Solution: Implemented a CurfewRule class with temporal logic:
 ```.py
 class CurfewRule:
-    WEEKDAY_CURFEW = time(21, 30)  # 9:30 PM
-    WEEKEND_CURFEW = time(22, 30)  # 10:30 PM
-    
+    WEEKDAY_CURFEW = time(21, 30)  # 9:30 PM curfew on weekdays
+    WEEKEND_CURFEW = time(22, 30)  # 10:30 PM curfew on weekends
+
+    # Get curfew time based on day of week
     @classmethod
     def get_curfew(cls, date):
         return cls.WEEKEND_CURFEW if date.weekday() in [4, 5] else cls.WEEKDAY_CURFEW
-    
+
+    # Validate if a leave request ends before curfew
     @classmethod
     def validate_request(cls, start, end):
-        if start.date() != end.date():
+        if start.date() != end.date():  # Must be same day
             return False
-        
         curfew = cls.get_curfew(start.date())
         return end.time() <= curfew
-
-##Implementation in Workflow:
+# Apply curfew logic in workflow
 
 def handle_local_request(request):
     if not CurfewRule.validate_request(request.start_time, request.end_time):
@@ -399,22 +436,25 @@ class LeaveEndorsement(db.Model):
     TYPE_TEACHER = 1
     TYPE_PARENT = 2
     TYPE_STAFF = 3
-    
+
     id = db.Column(db.Integer, primary_key=True)
     request_id = db.Column(db.Integer, db.ForeignKey('leave_request.id'))
-    endorser_type = db.Column(db.Integer)
+    endorser_type = db.Column(db.Integer)  # Used to determine subclass
     endorser_id = db.Column(db.Integer)
     approved = db.Column(db.Boolean, default=None)
-    
+
+    # Setup polymorphism
     __mapper_args__ = {
-        'polymorphic_on': endorser_type,
-        'polymorphic_identity': 0
+        'polymorphic_on': endorser_type,   # This column decides which subclass to use
+        'polymorphic_identity': 0          # Default identity
     }
 
+# Inherits LeaveEndorsement, identity = 1
 class TeacherEndorsement(LeaveEndorsement):
     __mapper_args__ = {'polymorphic_identity': 1}
     teacher = db.relationship('User', foreign_keys=[endorser_id])
 
+# Inherits LeaveEndorsement, identity = 2
 class ParentEndorsement(LeaveEndorsement):
     __mapper_args__ = {'polymorphic_identity': 2}
 ```
@@ -430,30 +470,31 @@ Solution: I created a REST API endpoint to process batch approvals atomically, u
 @app.route('/api/bulk-approve', methods=['POST'])
 def bulk_approve():
     try:
-        db.session.begin()
-        request_ids = request.json.get('requests', [])
-        
-        # Use single UPDATE query for efficiency
+        db.session.begin()  # Start transaction
+        request_ids = request.json.get('requests', [])  # Extract request IDs
+
+        # Approve all in one DB UPDATE
         db.session.execute(
             update(LeaveRequest)
             .where(LeaveRequest.id.in_(request_ids))
             .values(status='approved', staff_approved=True)
         )
-        
-        # Generate passes in bulk
+
+        # Fetch approved requests for post-processing (e.g., pass generation)
         approved_requests = LeaveRequest.query.filter(
             LeaveRequest.id.in_(request_ids)
         ).all()
-        
+
         for req in approved_requests:
-            generate_pass(req)
-            
-        db.session.commit()
+            generate_pass(req)  # Generate leave pass
+
+        db.session.commit()  # Commit everything
         return jsonify(success=True, count=len(request_ids))
-    
+
     except Exception as e:
-        db.session.rollback()
+        db.session.rollback()  # Undo changes on failure
         return jsonify(error=str(e)), 500
+
 ```
 Justification: This minimizes the number of DB transactions, improves scalability, and prevents partial updates. The use of REST principles also improves frontend-backend separation.
 
